@@ -91,7 +91,7 @@ class CandlestickChart:
 
 # 使用示例
 if __name__ == "__main__":
-    from stock import StockData
+    from stock_data import StockData
     
     # 准备数据
     stock = StockData("601288", "农业银行")
