@@ -20,6 +20,19 @@ def set_chinese_font():
     plt.rcParams["axes.unicode_minus"] = False  # 用来正常显示负号
 
 
+def calculate_ma(df, periods=[]):
+    """
+    计算多个周期的移动平均线，将结果添加到原始数据中
+    参数:
+    df: DataFrame，需要包含收盘价
+    periods: 需要计算的周期列表，默认为[5, 10, 20]
+    """
+    df_with_ma = df.copy()
+    for period in periods:
+        df_with_ma[f"MA{period}"] = df["收盘"].rolling(window=period).mean()
+    return df_with_ma
+
+
 def aggregate_by_period(df, period="D"):
     """
     按指定周期聚合股市数据
@@ -75,7 +88,9 @@ def get_plot_title(stock_code, start_date, end_date, period):
     return title
 
 
-def plot_candlestick(df, period="D", start_date=None, end_date=None):
+def plot_candlestick(
+    df, period="D", start_date=None, end_date=None, ma_periods=[5, 10, 20]
+):
     """
     使用matplotlib绘制K线图
 
@@ -91,15 +106,19 @@ def plot_candlestick(df, period="D", start_date=None, end_date=None):
     start_date: 开始日期，格式：'YYYY-MM-DD'
     end_date: 结束日期，格式：'YYYY-MM-DD'
     period: 周期，'D'(日), 'W'(周), 'M'(月)
+    ma_periods: 移动平均线的周期
     """
     if period not in ["D", "W", "M"]:
         raise ValueError("period必须是'D'、'W'或'M'之一")
 
-    plot_df = filter_by_date(df, start_date, end_date)
+    plot_df = calculate_ma(filter_by_date(df, start_date, end_date), ma_periods)
     if len(plot_df) == 0:
         raise ValueError("所选日期范围内没有数据")
 
     fig, ax = plt.subplots(figsize=(12, 8))
+    # 设置背景颜色, 使得K线图更易于观察
+    ax.set_facecolor("#f6f6f6")
+    fig.set_facecolor("white")
 
     for i in range(len(plot_df)):
         open_price = plot_df["开盘"].iloc[i]
@@ -118,17 +137,34 @@ def plot_candlestick(df, period="D", start_date=None, end_date=None):
 
         # 绘制上下影线
         ax.plot(
-            [i, i], [high_price, max(open_price, close_price)], color=color, linewidth=1
+            [i, i], [high_price, max(open_price, close_price)], color=color, linewidth=0.5
         )
         ax.plot(
-            [i, i], [low_price, min(open_price, close_price)], color=color, linewidth=1
+            [i, i], [low_price, min(open_price, close_price)], color=color, linewidth=0.5
+        )
+
+    # 绘制移动平均线
+    prop_cycle = plt.rcParams["axes.prop_cycle"]
+    colors = prop_cycle.by_key()["color"]
+
+    for idx, ma_period in enumerate(ma_periods):
+        ma_values = plot_df[f"MA{ma_period}"].values
+        color = colors[idx % len(colors)]  # 循环使用颜色
+        ax.plot(
+            range(len(plot_df)),
+            ma_values,
+            label=f"MA{ma_period}",
+            color=color,
+            linewidth=2,
+            alpha=0.8,
+            linestyle='dashdot',
+            # 'zorder': 5
         )
 
     num_ticks = min(10, len(plot_df))
     if num_ticks > 1:
         step = max(len(plot_df) // num_ticks, 1)
         ax.set_xticks(range(0, len(plot_df), step))
-
         date_format = {"D": "%Y-%m-%d", "W": "%Y-%m-%d", "M": "%Y-%m"}
         ax.set_xticklabels(
             plot_df["日期"].iloc[::step].dt.strftime(date_format[period]), rotation=45
@@ -138,6 +174,7 @@ def plot_candlestick(df, period="D", start_date=None, end_date=None):
     ax.set_title(plot_title)
     ax.set_ylabel("价格")
     ax.grid(True, linestyle="--", alpha=0.3)
+    ax.legend()
     plt.tight_layout()
 
     return fig
@@ -147,8 +184,9 @@ if __name__ == "__main__":
     set_chinese_font()
     stock_code = "601288"
     start_date = "20210101"
-    end_date = "20211231"
-    period = "D"
+    end_date = "20241231"
+    period = "W"
+    ma_periods = [5, 10, 20]
 
     start_date = pd.to_datetime(start_date)
     end_date = pd.to_datetime(end_date)
@@ -158,6 +196,5 @@ if __name__ == "__main__":
     df["日期"] = pd.to_datetime(df["日期"])
     aggregated_df = aggregate_by_period(df, period=period)
 
-    print("period:", period)
-    fig = plot_candlestick(aggregated_df, period, start_date, end_date)
+    fig = plot_candlestick(aggregated_df, period, start_date, end_date, ma_periods)
     plt.show()
