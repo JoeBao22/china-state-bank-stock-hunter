@@ -1,2 +1,4 @@
 ## 任何一个文件夹下的.DS_Store文件
 **/.DS_Store
+**/*.pyc
+.vscode/
