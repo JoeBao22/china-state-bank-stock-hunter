@@ -42,8 +42,8 @@ class MAStrategy(StrategyBase):
     def __init__(self, ratio1, ratio2, period, ma_period):
         """
         初始化MA策略
-        :param ratio1: 买入阈值，当PRICE_MA_RATIO < ratio1时买入
-        :param ratio2: 卖出阈值，当PRICE_MA_RATIO > ratio2时卖出
+        :param ratio1: 买入阈值，当指标值 < ratio1时买入
+        :param ratio2: 卖出阈值，当指标值 > ratio2时卖出
         :param period: 周期, 'D'表示日线，'W'表示周线，'M'表示月线
         :param ma_period: MA周期
         """
@@ -59,7 +59,7 @@ class MAStrategy(StrategyBase):
             .calculate_ma([self.ma_period]))
 
         df = processed_stock.df.copy()
-        df['PRICE_MA_RATIO'] = df['收盘'] / df[f'MA{self.ma_period}']
+        df['指标值'] = df['收盘'] / df[f'MA{self.ma_period}']
         return df
 
     def _generate_signals(self, df):
@@ -67,13 +67,13 @@ class MAStrategy(StrategyBase):
         signals['日期'] = df['日期']
         signals['收盘'] = df['收盘']
         signals[f'MA{self.ma_period}'] = df[f'MA{self.ma_period}']
-        signals['PRICE_MA_RATIO'] = df['PRICE_MA_RATIO']
+        signals['指标值'] = df['指标值']
 
         # 生成买入信号（1）和卖 出信号（-1）
         signals['SIGNAL'] = 0
         valid_data = signals[f'MA{self.ma_period}'].notna()
-        signals.loc[valid_data & (signals['PRICE_MA_RATIO'] < self.ratio1), 'SIGNAL'] = 1
-        signals.loc[valid_data & (signals['PRICE_MA_RATIO'] > self.ratio2), 'SIGNAL'] = -1
+        signals.loc[valid_data & (signals['指标值'] < self.ratio1), 'SIGNAL'] = 1
+        signals.loc[valid_data & (signals['指标值'] > self.ratio2), 'SIGNAL'] = -1
         return signals
 
     def _generate_trades(self, signals):
@@ -92,7 +92,7 @@ class MAStrategy(StrategyBase):
                 position = 1
                 entry_price = row['收盘']
                 entry_date = row['日期']
-                entry_ratio = row['PRICE_MA_RATIO']
+                entry_ratio = row['指标值']
                 max_price = entry_price
             elif position == 1:  # 持仓期间更新最高价
                 max_price = max(max_price, row['收盘'])
@@ -108,7 +108,7 @@ class MAStrategy(StrategyBase):
                         '买入时指标': entry_ratio,
                         '卖出日期': row['日期'],
                         '卖出价格': exit_price,
-                        '卖出时指标': row['PRICE_MA_RATIO'],
+                        '卖出时指标': row['指标值'],
                         '收益率': profit_pct,
                         '最大收益率': max_profit_pct,
                         '回撤率': drawdown_pct
