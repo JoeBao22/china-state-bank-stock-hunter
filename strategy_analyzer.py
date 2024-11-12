@@ -16,8 +16,8 @@ class WeeklyPriceMAStrategy:
         self.stock_data = stock_data
         self.ratio1 = ratio1
         self.ratio2 = ratio2
-        self.start_date = pd.to_datetime(start_date) if start_date else None
-        self.end_date = pd.to_datetime(end_date) if end_date else None
+        self.start_date = start_date
+        self.end_date = end_date
         self.df = None
         self.signals = None
         self.trades = None
@@ -36,18 +36,13 @@ class WeeklyPriceMAStrategy:
     
     def _prepare_data(self):
         """准备数据，计算周线和信号"""
-        # 首先获取完整数据
-        weekly_stock = self.stock_data.aggregate_by_period('W')
+        # 利用StockData的链式调用特性处理数据
+        processed_stock = (self.stock_data
+            .aggregate_by_period('W')  # 转换为周线
+            .filter_by_date(self.start_date, self.end_date)  # 按日期过滤
+            .calculate_ma([10]))  # 计算MA10
         
-        # 按日期过滤
-        if self.start_date or self.end_date:
-            weekly_stock = weekly_stock.filter_by_date(
-                start_date=self.start_date.strftime('%Y-%m-%d') if self.start_date else None,
-                end_date=self.end_date.strftime('%Y-%m-%d') if self.end_date else None
-            )
-        
-        # 计算MA10
-        self.df = weekly_stock.calculate_ma([10]).df
+        self.df = processed_stock.df.copy()
         
         # 计算价格/MA10比率
         self.df['PRICE_MA_RATIO'] = self.df['收盘'] / self.df['MA10']
@@ -57,7 +52,6 @@ class WeeklyPriceMAStrategy:
         
         # 生成交易记录
         self.trades = self._generate_trades()
-
     
     def _generate_signals(self):
         """生成买卖信号"""
@@ -69,23 +63,22 @@ class WeeklyPriceMAStrategy:
         
         # 生成买入信号（1）和卖出信号（-1）
         signals['SIGNAL'] = 0
-        # 只在MA10存在时生成信号（前10周不会有MA10）
         valid_data = signals['MA10'].notna()
-        signals.loc[valid_data & (signals['PRICE_MA_RATIO'] < self.ratio1), 'SIGNAL'] = 1  # 价格显著低于MA10时买入
-        signals.loc[valid_data & (signals['PRICE_MA_RATIO'] > self.ratio2), 'SIGNAL'] = -1  # 价格显著高于MA10时卖出
+        signals.loc[valid_data & (signals['PRICE_MA_RATIO'] < self.ratio1), 'SIGNAL'] = 1
+        signals.loc[valid_data & (signals['PRICE_MA_RATIO'] > self.ratio2), 'SIGNAL'] = -1
         
         return signals
     
     def _generate_trades(self):
         """生成交易记录"""
         trades = []
-        position = 0  # 当前持仓状态
-        entry_price = 0  # 买入价格
-        entry_date = None  # 买入日期
-        max_price = 0  # 持仓期间最高价
+        position = 0
+        entry_price = 0
+        entry_date = None
+        max_price = 0
         
         for idx, row in self.signals.iterrows():
-            if pd.isna(row['MA10']):  # 跳过没有MA10的数据
+            if pd.isna(row['MA10']):
                 continue
                 
             if position == 0 and row['SIGNAL'] == 1:  # 买入
@@ -115,7 +108,7 @@ class WeeklyPriceMAStrategy:
                     })
         
         return pd.DataFrame(trades)
-    
+
     def get_performance_summary(self):
         """获取策略表现摘要"""
         if len(self.trades) == 0:
@@ -180,10 +173,19 @@ class WeeklyPriceMAStrategy:
                            xytext=(10, 10), textcoords='offset points',
                            fontsize=8, color='red' if trade['收益率'] > 0 else 'green')
             
-            ax1.set_title(f'{self.stock_data.name}({self.stock_data.stock_code}) 周线交易策略')
+            # 设置标题，包含日期范围信息
+            date_range_str = ""
+            if self.start_date and self.end_date:
+                date_range_str = f"({self.start_date} 至 {self.end_date})"
+            elif self.start_date:
+                date_range_str = f"({self.start_date} 之后)"
+            elif self.end_date:
+                date_range_str = f"({self.end_date} 之前)"
+            
+            ax1.set_title(f'{self.stock_data.name}({self.stock_data.stock_code}) 周线交易策略 {date_range_str}')
             ax1.set_xlabel('日期')
             ax1.set_ylabel('价格')
-            # ax1.legend()
+            ax1.legend()
             ax1.grid(True)
             
             # 下图：价格/MA10比值
@@ -248,7 +250,16 @@ class WeeklyPriceMAStrategy:
                 verticalalignment='top',
                 bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
         
-        plt.title(f'{self.stock_data.name}({self.stock_data.stock_code}) 周线价格/MA10比值分布')
+        # 设置标题，包含日期范围信息
+        date_range_str = ""
+        if self.start_date and self.end_date:
+            date_range_str = f"({self.start_date} 至 {self.end_date})"
+        elif self.start_date:
+            date_range_str = f"({self.start_date} 之后)"
+        elif self.end_date:
+            date_range_str = f"({self.end_date} 之前)"
+            
+        plt.title(f'{self.stock_data.name}({self.stock_data.stock_code}) 价格/MA10比值分布 {date_range_str}')
         plt.xlabel('价格/MA10比值')
         plt.ylabel('密度')
         plt.grid(True, alpha=0.3)
@@ -260,16 +271,16 @@ class WeeklyPriceMAStrategy:
 if __name__ == "__main__":
     from stock_data import StockData
     
-    # 测试策略
+    # 创建股票数据对象
     stock = StockData("601288", "农业银行")
     
-    # 使用2018年至今的数据
+    # 测试2018年至今的策略
     analyzer = WeeklyPriceMAStrategy(
         stock_data=stock,
-        ratio1=1.00,  # 当价格低于MA10的ratio1时买入
-        ratio2=1.03,  # 当价格高于MA10的ratio2时卖出
+        ratio1=1.00,  # 当价格低于MA10的95%时买入
+        ratio2=1.05,  # 当价格高于MA10的105%时卖出
         start_date='2018-01-01',
-        end_date=None  # 不设置结束日期，使用到最新数据
+        end_date=None
     )
     
     # 打印交易记录
@@ -281,19 +292,7 @@ if __name__ == "__main__":
     print("\n策略表现：")
     summary = analyzer.get_performance_summary()
     print(f"总交易次数: {summary['total_trades']}")
-    print(f"胜率: {summary['win_rate']:.2f}%")
-    print(f"平均收益率: {summary['avg_return']:.2f}%")
-    print(f"总收益率: {summary['total_return']:.2f}%")
-    print(f"最大单笔收益: {summary['max_return']:.2f}%")
-    print(f"最小单笔收益: {summary['min_return']:.2f}%")
-    print(f"平均持仓周数: {summary['avg_hold_weeks']:.1f}")
-    print(f"平均回撤率: {summary['avg_drawdown']:.2f}%")
-    print(f"最大回撤率: {summary['max_drawdown']:.2f}%")
-    
+
     # 绘制交易图表
-    analyzer.plot_trades()
-    plt.show()
-    
-    # 绘制比值分布图
-    analyzer.plot_ratio_distribution()
+    plt = analyzer.plot_trades()
     plt.show()
