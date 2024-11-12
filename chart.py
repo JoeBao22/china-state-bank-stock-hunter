@@ -2,10 +2,34 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 import sys
 
-class CandlestickChart:
+
+def setup_chinese_font():
+    if sys.platform.startswith("win"):
+        plt.rcParams["font.sans-serif"] = ["SimHei"]
+    elif sys.platform.startswith("linux"):
+        plt.rcParams["font.sans-serif"] = ["WenQuanYi Micro Hei"]
+    elif sys.platform.startswith("darwin"):
+        plt.rcParams["font.sans-serif"] = ["PingFang HK"]
+    plt.rcParams["axes.unicode_minus"] = False
+
+
+class Chart:
+    def __init__(self):
+        setup_chinese_font()
+
+    def show(self):
+        plt.tight_layout()
+        plt.show()
+
+    def save(self, filepath):
+        plt.tight_layout()
+        plt.savefig(filepath)
+
+
+class CandlestickChart(Chart):
     def __init__(self, stock_data):
+        super().__init__()
         self.stock_data = stock_data
-        self._setup_chinese_font()
         self.fig, self.ax = plt.subplots(figsize=(12, 8))
         self._setup_basic_style()
         
@@ -81,13 +105,7 @@ class CandlestickChart:
         self.ax.set_title(title, pad=15)
         return self
         
-    def show(self):
-        plt.tight_layout()
-        plt.show()
-        
-    def save(self, filepath):
-        plt.tight_layout()
-        self.fig.savefig(filepath)
+
 
 # 使用示例
 if __name__ == "__main__":
