@@ -107,10 +107,11 @@ class CandlestickChart(Chart):
 
 
 class TradeChart(Chart):
-    def __init__(self, df, trades, args):
+    def __init__(self, df, trades, new_indicator_columns, args):
         super().__init__()
         self.df = df
         self.trades = trades
+        self.new_indicator_columns = new_indicator_columns
         self.args = args
         self.fig, (self.price_ax, self.indicator_ax) = plt.subplots(
             2, 1, figsize=(12, 8), height_ratios=[2, 1]
@@ -159,8 +160,10 @@ class TradeChart(Chart):
         return self
     
     def plot_indicator_line(self):
-        self.indicator_ax.plot(self.df['日期'], self.df['指标值'], 
-                             label=self.args.indicator_name, color='purple')
+        if self.new_indicator_columns:
+            for col in self.new_indicator_columns:
+                self.indicator_ax.plot(self.df['日期'], self.df[col], 
+                                     label=col, alpha=0.7)
         return self
     
     def plot_threshold_lines(self):
@@ -173,15 +176,17 @@ class TradeChart(Chart):
         return self
     
     def plot_indicator_points(self):
-        for _, trade in self.trades.iterrows():
-            self.indicator_ax.scatter(trade['买入日期'], trade[f'买入时指标'], 
-                                    color='green', marker='^', s=100)
-            self.indicator_ax.scatter(trade['卖出日期'], trade[f'卖出时指标'], 
-                                    color='red', marker='v', s=100)
+        if self.new_indicator_columns:
+            for indicator in self.new_indicator_columns:
+                for _, trade in self.trades.iterrows():
+                    self.indicator_ax.scatter(trade['买入日期'], trade[f'买入时{indicator}指标'], 
+                                            color='green', marker='^', s=100)
+                    self.indicator_ax.scatter(trade['卖出日期'], trade[f'卖出时{indicator}指标'], 
+                                            color='red', marker='v', s=100)
         return self
     
     def set_indicator_chart_properties(self):
-        self.indicator_ax.set_title(f'{self.args.indicator_name}变化')
+        self.indicator_ax.set_title(f'{self.new_indicator_columns}变化')
         self.indicator_ax.set_xlabel('日期')
         self.indicator_ax.set_ylabel('指标值')
         self.indicator_ax.legend()
@@ -207,9 +212,10 @@ class TradeChart(Chart):
                 .set_indicator_chart_properties())
 
 class IndicatorDistributionChart(Chart):
-    def __init__(self, df, args, bins=50):
+    def __init__(self, df, indicator_name, args, bins=50):
         super().__init__()
         self.df = df
+        self.indicator_name = indicator_name
         self.args = args
         self.bins = bins
         self.fig, self.dist_ax = plt.subplots(figsize=(12, 6))
@@ -221,7 +227,7 @@ class IndicatorDistributionChart(Chart):
         self.fig.set_facecolor("white")
         
     def plot_histogram(self):
-        self.ratio_data = self.df['指标值'].dropna()
+        self.ratio_data = self.df[f'{self.indicator_name}'].dropna()
         self.dist_ax.hist(self.ratio_data, bins=self.bins, 
                          alpha=0.7, color='blue', density=True)
         return self
@@ -265,10 +271,10 @@ class IndicatorDistributionChart(Chart):
         date_range_str = self._get_date_range_str()
         self.dist_ax.set_title(
             f'{self.args.stock_name}({self.args.stock_code}) '
-            f'指标值分布 {date_range_str}'
+            f'{self.indicator_name}指标值分布 {date_range_str}'
         )
         
-        self.dist_ax.set_xlabel(f'{self.args.indicator_name}值')
+        self.dist_ax.set_xlabel(f'{self.indicator_name}值')
         self.dist_ax.set_ylabel('密度')
         
         self.dist_ax.legend()

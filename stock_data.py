@@ -51,19 +51,20 @@ class StockData:
             raise ValueError(f"数据文件 {file_path} 格式不正确")
 
     def filter_by_date(self, start_date=None, end_date=None):
-        new_stock = StockData(self.stock_code, self.name, self.data_dir)
-        new_stock.df = StockDataProcessor.filter_by_date(self.df, start_date, end_date)
-        return new_stock
+        self.df = StockDataProcessor.filter_by_date(self.df, start_date, end_date)
+        return self
 
     def calculate_ma(self, periods=[]):
-        new_stock = StockData(self.stock_code, self.name, self.data_dir)
-        new_stock.df = StockDataProcessor.calculate_ma(self.df, periods)
-        return new_stock
+        self.df = StockDataProcessor.calculate_ma(self.df, periods)
+        return self
 
+    def calculate_kdj(self, n=9, m1=3, m2=3):
+        self.df = StockDataProcessor.calculate_kdj(self.df, n, m1, m2)
+        return self
+    
     def aggregate_by_period(self, period='D'):
-        new_stock = StockData(self.stock_code, self.name, self.data_dir)
-        new_stock.df = StockDataProcessor.aggregate_by_period(self.df, period)
-        return new_stock
+        self.df = StockDataProcessor.aggregate_by_period(self.df, period)
+        return self
     
     def __str__(self) -> str:
         return f"股票代码：{self.stock_code}\n" \

@@ -51,6 +51,8 @@ class MAStrategy(StrategyBase):
         self.ratio2 = ratio2
         self.period = period
         self.ma_period = ma_period
+        self.new_feature_columns = [f'MA{ma_period}']
+        self.new_indicator_columns = ['收盘/MA']
 
     def _process_data(self, stock_data, start_date=None, end_date=None):
         processed_stock = (stock_data
@@ -59,7 +61,7 @@ class MAStrategy(StrategyBase):
             .calculate_ma([self.ma_period]))
 
         df = processed_stock.df.copy()
-        df['指标值'] = df['收盘'] / df[f'MA{self.ma_period}']
+        df['收盘/MA'] = df['收盘'] / df[f'MA{self.ma_period}']
         return df
 
     def _generate_signals(self, df):
@@ -67,13 +69,13 @@ class MAStrategy(StrategyBase):
         signals['日期'] = df['日期']
         signals['收盘'] = df['收盘']
         signals[f'MA{self.ma_period}'] = df[f'MA{self.ma_period}']
-        signals['指标值'] = df['指标值']
+        signals['收盘/MA'] = df['收盘/MA']
 
         # 生成买入信号（1）和卖 出信号（-1）
         signals['SIGNAL'] = 0
         valid_data = signals[f'MA{self.ma_period}'].notna()
-        signals.loc[valid_data & (signals['指标值'] < self.ratio1), 'SIGNAL'] = 1
-        signals.loc[valid_data & (signals['指标值'] > self.ratio2), 'SIGNAL'] = -1
+        signals.loc[valid_data & (signals['收盘/MA'] < self.ratio1), 'SIGNAL'] = 1
+        signals.loc[valid_data & (signals['收盘/MA'] > self.ratio2), 'SIGNAL'] = -1
         return signals
 
     def _generate_trades(self, signals):
@@ -92,7 +94,7 @@ class MAStrategy(StrategyBase):
                 position = 1
                 entry_price = row['收盘']
                 entry_date = row['日期']
-                entry_ratio = row['指标值']
+                entry_ratio = row['收盘/MA']
                 max_price = entry_price
             elif position == 1:  # 持仓期间更新最高价
                 max_price = max(max_price, row['收盘'])
@@ -105,13 +107,108 @@ class MAStrategy(StrategyBase):
                     trades.append({
                         '买入日期': entry_date,
                         '买入价格': entry_price,
-                        '买入时指标': entry_ratio,
+                        '买入时收盘/MA指标': entry_ratio,
                         '卖出日期': row['日期'],
                         '卖出价格': exit_price,
-                        '卖出时指标': row['指标值'],
+                        '卖出时收盘/MA指标': row['收盘/MA'],
                         '收益率': profit_pct,
                         '最大收益率': max_profit_pct,
                         '回撤率': drawdown_pct
                     })
 
+        return pd.DataFrame(trades)
+
+
+class KDJStrategy(StrategyBase):
+    def __init__(self, n=9, m1=3, m2=3, period='D'):
+        """
+        初始化KDJ策略
+        :param n: RSV周期
+        :param m1: K值周期
+        :param m2: D值周期
+        :param period: 周期, 'D'表示日线，'W'表示周线，'M'表示月线
+        """
+        self.n = n
+        self.m1 = m1
+        self.m2 = m2
+        self.period = period
+        self.new_feature_columns = ['KDJ_K', 'KDJ_D', 'KDJ_J']
+        self.new_indicator_columns = ['K-D']
+
+    def _process_data(self, stock_data, start_date=None, end_date=None):
+        """处理数据，计算KDJ指标"""
+        processed_stock = (stock_data
+            .filter_by_date(start_date, end_date)
+            .aggregate_by_period(self.period)
+            .calculate_kdj(self.n, self.m1, self.m2))
+            
+        df = processed_stock.df.copy()
+        df['K-D'] = df['KDJ_K'] - df['KDJ_D']
+        return df
+
+    def _generate_signals(self, df):
+        """生成交易信号"""
+        signals = pd.DataFrame(index=df.index)
+        signals['日期'] = df['日期']
+        signals['收盘'] = df['收盘']
+        signals['KDJ_K'] = df['KDJ_K']
+        signals['KDJ_D'] = df['KDJ_D']
+        signals['KDJ_J'] = df['KDJ_J']
+        
+        # 生成金叉死叉信号
+        signals['SIGNAL'] = 0
+        signals['K-D'] = df['K-D']
+        valid_data = signals['KDJ_K'].notna() & signals['KDJ_D'].notna()
+        
+        # 金叉：K线从下向上穿过D线
+        golden_cross = (df['KDJ_K'] > df['KDJ_D']) & (df['KDJ_K'].shift(1) <= df['KDJ_D'].shift(1))
+        # 死叉：K线从上向下穿过D线
+        death_cross = (df['KDJ_K'] < df['KDJ_D']) & (df['KDJ_K'].shift(1) >= df['KDJ_D'].shift(1))
+        
+        signals.loc[valid_data & golden_cross, 'SIGNAL'] = 1
+        signals.loc[valid_data & death_cross, 'SIGNAL'] = -1
+        
+        return signals
+
+    def _generate_trades(self, signals):
+        """生成交易记录"""
+        trades = []
+        position = 0
+        entry_price = 0
+        entry_date = None
+        max_price = 0
+        
+        for idx, row in signals.iterrows():
+            if pd.isna(row['KDJ_K']) or pd.isna(row['KDJ_D']):
+                continue
+                
+            if position == 0 and row['SIGNAL'] == 1:  # 金叉买入
+                position = 1
+                entry_price = row['收盘']
+                entry_date = row['日期']
+                entry_k = row['KDJ_K']
+                entry_d = row['KDJ_D']
+                max_price = entry_price
+                
+            elif position == 1:  # 持仓期间更新最高价
+                max_price = max(max_price, row['收盘'])
+                if row['SIGNAL'] == -1:  # 死叉卖出
+                    position = 0
+                    exit_price = row['收盘']
+                    profit_pct = (exit_price / entry_price - 1) * 100
+                    max_profit_pct = (max_price / entry_price - 1) * 100
+                    drawdown_pct = (exit_price / max_price - 1) * 100
+                    
+                    trades.append({
+                        '买入日期': entry_date,
+                        '买入价格': entry_price,
+                        '买入时K-D指标': entry_k - entry_d,
+                        '卖出日期': row['日期'],
+                        '卖出价格': exit_price,
+                        '卖出时K-D指标': row['KDJ_K'] - row['KDJ_D'],
+                        '收益率': profit_pct,
+                        '最大收益率': max_profit_pct,
+                        '回撤率': drawdown_pct
+                    })
+                    
         return pd.DataFrame(trades)
