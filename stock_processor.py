@@ -31,8 +31,6 @@ class StockDataProcessor:
         processed_df['KDJ_K'] = k
         processed_df['KDJ_D'] = d
         processed_df['KDJ_J'] = j
-        new_columns = ['KDJ_K', 'KDJ_D', 'KDJ_J']
-        
         return processed_df
         
     @staticmethod
@@ -51,3 +49,34 @@ class StockDataProcessor:
                         '收盘': 'last',
                     }))
         return resampled.dropna().reset_index()
+
+    @staticmethod
+    def calculate_macd(df, fast_period=12, slow_period=26, signal_period=9):
+        """
+        计算MACD技术指标
+        
+        参数:
+        df: DataFrame，必须包含'收盘'列
+        fast_period: 快速EMA周期，默认12
+        slow_period: 慢速EMA周期，默认26
+        signal_period: 信号线DIF的EMA周期，默认9
+        
+        返回:
+        DataFrame，包含原始数据及MACD指标数据
+        """
+        processed_df = df.copy()
+        
+        # 计算快速和慢速指数移动平均线
+        fast_ema = processed_df['收盘'].ewm(span=fast_period, adjust=False).mean()
+        slow_ema = processed_df['收盘'].ewm(span=slow_period, adjust=False).mean()
+        
+        # 计算MACD线（DIF）
+        processed_df['MACD_DIF'] = fast_ema - slow_ema
+        
+        # 计算信号线（DEA）
+        processed_df['MACD_DEA'] = processed_df['MACD_DIF'].ewm(span=signal_period, adjust=False).mean()
+        
+        # 计算MACD柱状图（HIST）
+        processed_df['MACD_HIST'] = 2 * (processed_df['MACD_DIF'] - processed_df['MACD_DEA'])
+        
+        return processed_df

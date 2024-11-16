@@ -212,3 +212,99 @@ class KDJStrategy(StrategyBase):
                     })
                     
         return pd.DataFrame(trades)
+
+
+
+class MACDStrategy(StrategyBase):
+    def __init__(self, fast_period=12, slow_period=26, signal_period=9, period='D'):
+        """
+        初始化MACD策略
+        :param fast_period: 快速EMA周期
+        :param slow_period: 慢速EMA周期
+        :param signal_period: 信号线周期
+        :param period: 周期, 'D'表示日线，'W'表示周线，'M'表示月线
+        """
+        self.fast_period = fast_period
+        self.slow_period = slow_period
+        self.signal_period = signal_period
+        self.period = period
+        self.new_feature_columns = ['MACD_DIF', 'MACD_DEA', 'MACD_HIST']
+        self.new_indicator_columns = ['MACD_HIST']
+
+    def _process_data(self, stock_data, start_date=None, end_date=None):
+        """处理数据，计算MACD指标"""
+        processed_stock = (stock_data
+            .filter_by_date(start_date, end_date)
+            .aggregate_by_period(self.period)
+            .calculate_macd(self.fast_period, self.slow_period, self.signal_period))
+            
+        return processed_stock.df.copy()
+
+    def _generate_signals(self, df):
+        """生成交易信号"""
+        signals = pd.DataFrame(index=df.index)
+        signals['日期'] = df['日期']
+        signals['收盘'] = df['收盘']
+        signals['MACD_DIF'] = df['MACD_DIF']
+        signals['MACD_DEA'] = df['MACD_DEA']
+        signals['MACD_HIST'] = df['MACD_HIST']
+        
+        # 生成金叉死叉信号
+        signals['SIGNAL'] = 0
+        valid_data = signals['MACD_DIF'].notna() & signals['MACD_DEA'].notna()
+        
+        # 金叉：DIF从下向上穿过DEA
+        golden_cross = (df['MACD_DIF'] > df['MACD_DEA']) & (df['MACD_DIF'].shift(1) <= df['MACD_DEA'].shift(1))
+        # 死叉：DIF从上向下穿过DEA
+        death_cross = (df['MACD_DIF'] < df['MACD_DEA']) & (df['MACD_DIF'].shift(1) >= df['MACD_DEA'].shift(1))
+        
+        signals.loc[valid_data & golden_cross, 'SIGNAL'] = 1
+        signals.loc[valid_data & death_cross, 'SIGNAL'] = -1
+        
+        return signals
+
+    def _generate_trades(self, signals):
+        """生成交易记录"""
+        trades = []
+        position = 0
+        entry_price = 0
+        entry_date = None
+        max_price = 0
+        
+        for idx, row in signals.iterrows():
+            if pd.isna(row['MACD_DIF']) or pd.isna(row['MACD_DEA']):
+                continue
+                
+            if position == 0 and row['SIGNAL'] == 1:  # 金叉买入
+                position = 1
+                entry_price = row['收盘']
+                entry_date = row['日期']
+                entry_dif = row['MACD_DIF']
+                entry_dea = row['MACD_DEA']
+                entry_hist = row['MACD_HIST']
+                max_price = entry_price
+                
+            elif position == 1:  # 持仓期间更新最高价
+                max_price = max(max_price, row['收盘'])
+                if row['SIGNAL'] == -1:  # 死叉卖出
+                    position = 0
+                    exit_price = row['收盘']
+                    profit_pct = (exit_price / entry_price - 1) * 100
+                    max_profit_pct = (max_price / entry_price - 1) * 100
+                    drawdown_pct = (exit_price / max_price - 1) * 100
+                    
+                    trades.append({
+                        '买入日期': entry_date,
+                        '买入价格': entry_price,
+                        '买入时MACD_HIST指标': entry_hist,
+                        '买入时DIF-DEA差值': entry_dif - entry_dea,
+                        '卖出日期': row['日期'],
+                        '卖出价格': exit_price,
+                        '卖出时MACD_HIST指标': row['MACD_HIST'],
+                        '卖出时DIF-DEA差值': row['MACD_DIF'] - row['MACD_DEA'],
+                        '收益率': profit_pct,
+                        '最大收益率': max_profit_pct,
+                        '回撤率': drawdown_pct
+                    })
+                    
+        return pd.DataFrame(trades)

@@ -1,5 +1,5 @@
 from strategy_analyzer import get_performance_summary
-from strategy_generator import MAStrategy, KDJStrategy
+from strategy_generator import MAStrategy, KDJStrategy, MACDStrategy
 from stock_data import StockData
 from chart import TradeChart, IndicatorDistributionChart
 import argparse
@@ -32,6 +32,18 @@ class TestKDJArgs:
         self.m2 = 3
         self.period = 'W'
 
+
+class TestMACDArgs:
+    """用于测试的参数类"""
+    def __init__(self):
+        self.stock_code = '601288'
+        self.stock_name = '农业银行'
+        self.start_date = '2014-01-01'
+        self.end_date = None
+        self.fast_period = 12
+        self.slow_period = 26
+        self.signal_period = 9
+        self.period = 'W'
 
 def parse_args():
     parser = argparse.ArgumentParser(description='股票交易策略分析工具')
@@ -169,6 +181,48 @@ def test_kdj():
                 .set_chart_properties())
     distribution_chart.show()
 
+def test_macd():
+    args = TestMACDArgs()
+    strategy = MACDStrategy(args.fast_period, args.slow_period, args.signal_period, args.period)
+    stock_data = StockData(args.stock_code, args.stock_name)
+
+    df, signals, trades = strategy.apply_strategy(stock_data, args.start_date, args.end_date)
+    
+    print("\n交易记录：")
+    print(trades)
+    
+    # 打印策略表现
+    print("\n策略表现：")
+    summary = get_performance_summary(trades)
+    print(f"总交易次数: {summary['total_trades']}")
+    print(f"胜率: {summary['win_rate']:.2f}%")
+    print(f"平均收益率: {summary['avg_return']:.2f}%")
+    print(f"总收益率: {summary['total_return']:.2f}%")
+    print(f"最大单笔收益: {summary['max_return']:.2f}%")
+    print(f"最小单笔收益: {summary['min_return']:.2f}%")
+    print(f"平均持仓周数: {summary['avg_hold_weeks']:.1f}")
+    print(f"平均回撤率: {summary['avg_drawdown']:.2f}%")
+    print(f"最大回撤率: {summary['max_drawdown']:.2f}%")
+
+    new_indicators = strategy.new_indicator_columns
+    # 绘制交易图表
+    trade_chart = (TradeChart(df, trades, new_indicators, args)
+                .plot_price_line()
+                .plot_trade_points()
+                .set_price_chart_properties()
+                .plot_indicator_line()
+                .plot_indicator_points()
+                .set_indicator_chart_properties())
+
+    trade_chart.show()
+
+    distribution_chart = (IndicatorDistributionChart(df, new_indicators[0], args)
+                .plot_histogram()
+                .add_statistics()
+                .set_chart_properties())
+    distribution_chart.show()
+
+
 # 使用示例
 if __name__ == '__main__':
-    test_kdj()
+    test_macd()

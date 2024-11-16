@@ -61,6 +61,10 @@ class StockData:
     def calculate_kdj(self, n=9, m1=3, m2=3):
         self.df = StockDataProcessor.calculate_kdj(self.df, n, m1, m2)
         return self
+
+    def calculate_macd(self, fast_period=12, slow_period=26, signal_period=9):
+        self.df = StockDataProcessor.calculate_macd(self.df, fast_period, slow_period, signal_period)
+        return self
     
     def aggregate_by_period(self, period='D'):
         self.df = StockDataProcessor.aggregate_by_period(self.df, period)
