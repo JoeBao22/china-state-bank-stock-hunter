@@ -73,8 +73,7 @@ class CompanyInfoDownloader:
                         feature_info = content[(len(feature_name)+1):]
                         feature_value = feature_info.strip().split("\n")[0].strip()
                         data[feature_name] = feature_value
-                
-                if '公司名称' not in data or '股票代码' not in data:
+                if data['公司名称'] == '' or data['股票代码'] == '':
                     print(f"未找到公司 {stock_code} 的信息")
                     return False
                 # 保存数据
@@ -127,7 +126,7 @@ class CompanyInfoDownloader:
 
 if __name__ == '__main__':
     downloader = CompanyInfoDownloader()
-    for i in range(1, 300):
+    for i in range(3000):
         stock_code = str(i).zfill(6)
         downloader.download_company_info(stock_code)
 
