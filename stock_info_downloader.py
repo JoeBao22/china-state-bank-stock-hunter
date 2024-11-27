@@ -126,10 +126,15 @@ class CompanyInfoDownloader:
 
 if __name__ == '__main__':
     downloader = CompanyInfoDownloader()
-    for i in range(3000):
-        stock_code = str(i).zfill(6)
-        downloader.download_company_info(stock_code)
+    # # SZ
+    # for i in range(3044):
+    #     stock_code = str(i).zfill(6)
+    #     downloader.download_company_info(stock_code)
 
+    # SH
+    for i in range(5400):
+        stock_code = "60" + str(i).zfill(4)
+        downloader.download_company_info(stock_code)
 
 # # 使用示例
 # stock_code = '000001'  # 平安银行的股票代码
